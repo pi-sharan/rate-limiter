@@ -36,7 +36,7 @@ Latency distribution:
   75% in 0.0014 secs  
   90% in 0.0032 secs  
   95% in 0.0040 secs  
-  99% in 0.0057 secs  
+  99% in 0.0057 secs
 
 Details (average, fastest, slowest):  
   DNS+dialup:   0.0001 secs, 0.0001 secs, 0.0063 secs  
