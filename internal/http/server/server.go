@@ -1,15 +1,14 @@
 package server
 
 import (
-    "fmt"
-    "net/http"
-    "time"
+	"fmt"
+	"net/http"
 
-    "github.com/gin-gonic/gin"
-    "github.com/piyushsharan/rate-limiter/internal/config"
-    "github.com/piyushsharan/rate-limiter/internal/http/handlers"
-    "github.com/piyushsharan/rate-limiter/internal/http/middleware"
-    "github.com/piyushsharan/rate-limiter/internal/limiter"
+	"github.com/gin-gonic/gin"
+	"github.com/piyushsharan/rate-limiter/internal/config"
+	"github.com/piyushsharan/rate-limiter/internal/http/handlers"
+	"github.com/piyushsharan/rate-limiter/internal/http/middleware"
+	"github.com/piyushsharan/rate-limiter/internal/limiter"
 )
 
 type Server struct {
@@ -23,9 +22,9 @@ func New(cfg *config.Config) *Server {
 	engine.Use(gin.Logger(), gin.Recovery())
 
 	limiterCfg := limiter.TokenBucketConfig{
-		BucketCapacity: 5,
-		RefillRate:     5,
-		RefillInterval: 60 * time.Second,
+		BucketCapacity: cfg.RateLimiter.BucketCapacity,
+		RefillRate:     cfg.RateLimiter.RefillRate,
+		RefillInterval: cfg.RateLimiter.RefillInterval,
 	}
 	limiterSvc := limiter.NewInMemory(limiterCfg)
 
