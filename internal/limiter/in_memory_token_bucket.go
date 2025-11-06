@@ -28,13 +28,13 @@ type inMemoryLimiter struct {
 // NewInMemory returns an in-memory token bucket limiter.
 func NewInMemory(cfg TokenBucketConfig) Limiter {
 	if cfg.BucketCapacity <= 0 {
-		cfg.BucketCapacity = 100
+		cfg.BucketCapacity = 100 // default is incorrect cfg is provided to us
 	}
 	if cfg.RefillRate <= 0 {
-		cfg.RefillRate = 50
+		cfg.RefillRate = 50 // default is incorrect cfg is provided to us
 	}
 	if cfg.RefillInterval <= 0 {
-		cfg.RefillInterval = time.Minute
+		cfg.RefillInterval = time.Minute // default is incorrect cfg is provided to us
 	}
 
 	return &inMemoryLimiter{
