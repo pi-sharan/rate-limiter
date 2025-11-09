@@ -13,14 +13,14 @@ import (
 // Redis-backed token bucket limiter.
 type redisLimiter struct {
 	cfg       TokenBucketConfig
-	client    goRedis.Cmdable
+	picker    RedisClientPicker
 	keyPrefix string
 }
 
-// NewRedis creates a limiter that stores state in Redis.
-func NewRedis(client goRedis.Cmdable, cfg TokenBucketConfig) (Limiter, error) {
-	if client == nil {
-		return nil, fmt.Errorf("redis client is nil")
+// NewRedisWithPicker creates a limiter that uses the provided client picker.
+func NewRedisWithPicker(picker RedisClientPicker, cfg TokenBucketConfig) (Limiter, error) {
+	if picker == nil {
+		return nil, fmt.Errorf("redis client picker is nil")
 	}
 
 	if cfg.BucketCapacity <= 0 {
@@ -35,26 +35,29 @@ func NewRedis(client goRedis.Cmdable, cfg TokenBucketConfig) (Limiter, error) {
 
 	return &redisLimiter{
 		cfg:       cfg,
-		client:    client,
+		picker:    picker,
 		keyPrefix: "rate_limiter",
 	}, nil
 }
 
 func (r *redisLimiter) Allow(ctx context.Context, key string) (Decision, error) {
-	// TODO: Should throw error if key is not valid
 	if key == "" {
 		key = "default"
+	}
+
+	client, err := r.picker.Pick(key)
+	if err != nil {
+		return Decision{}, err
 	}
 
 	now := time.Now()
 	intervalMs := int64(r.cfg.RefillInterval / time.Millisecond)
 
-	// TODO: Need to throw error if interval not valid
 	if intervalMs <= 0 {
 		intervalMs = 1000
 	}
 
-	res, err := redisTokenBucketScript.Run(ctx, r.client, []string{r.bucketKey(key)},
+	res, err := redisTokenBucketScript.Run(ctx, client, []string{r.bucketKey(key)},
 		r.cfg.BucketCapacity,
 		r.cfg.RefillRate,
 		intervalMs,
@@ -123,6 +126,17 @@ func toInt64(v interface{}) (int64, error) {
 	default:
 		return 0, fmt.Errorf("unsupported type %T", v)
 	}
+}
+
+type staticPicker struct {
+	client goRedis.Cmdable
+}
+
+func (s *staticPicker) Pick(key string) (goRedis.Cmdable, error) {
+	if s.client == nil {
+		return nil, fmt.Errorf("redis client is nil")
+	}
+	return s.client, nil
 }
 
 var redisTokenBucketScript = goRedis.NewScript(`

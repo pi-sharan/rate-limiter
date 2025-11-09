@@ -10,6 +10,7 @@ import (
 	"github.com/piyushsharan/rate-limiter/internal/http/middleware"
 	"github.com/piyushsharan/rate-limiter/internal/limiter"
 	redisstore "github.com/piyushsharan/rate-limiter/internal/storage/redis"
+	"github.com/piyushsharan/rate-limiter/internal/storage/rediscluster"
 )
 
 type Server struct {
@@ -54,18 +55,38 @@ func buildLimiter(cfg *config.Config) (limiter.Limiter, error) {
 
 	switch cfg.RateLimiter.Backend {
 	case "redis":
-		client, err := redisstore.New(redisstore.Config{
-			Addr:     cfg.Redis.Addr,
-			Username: cfg.Redis.Username,
-			Password: cfg.Redis.Password,
-			DB:       cfg.Redis.DB,
-		})
-		if err != nil {
-			return nil, err
-		}
-
-		return limiter.NewRedis(client.Raw(), base)
+		return buildRedisLimiter(cfg, base)
 	default:
 		return limiter.NewInMemory(base), nil
 	}
+}
+
+func buildRedisLimiter(cfg *config.Config, base limiter.TokenBucketConfig) (limiter.Limiter, error) {
+	if len(cfg.Redis.Shards) == 0 {
+		return nil, fmt.Errorf("redis backend selected but no shards configured")
+	}
+
+	nodes := make([]rediscluster.Node, 0, len(cfg.Redis.Shards))
+	for i, shard := range cfg.Redis.Shards {
+		client, err := redisstore.New(redisstore.Config{
+			Addr:     shard.Addr,
+			Username: shard.Username,
+			Password: shard.Password,
+			DB:       shard.DB,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create redis client for %d (%s): %w", i, shard.Addr, err)
+		}
+		nodes = append(nodes, rediscluster.Node{
+			ID:     fmt.Sprintf("redis-%d-%s", i, shard.Addr),
+			Client: client.Raw(),
+		})
+	}
+
+	ring, err := rediscluster.NewConsistentHash(nodes, cfg.Redis.HashReplicas)
+	if err != nil {
+		return nil, err
+	}
+
+	return limiter.NewRedisWithPicker(ring, base)
 }
