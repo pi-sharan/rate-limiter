@@ -17,28 +17,28 @@ type Node struct {
 
 // ConsistentHash implements a basic consistent hashing ring.
 type ConsistentHash struct {
-	replicas int
-	keys     []uint32
-	ring     map[uint32]goRedis.Cmdable
+	fakeReplicas int
+	keys         []uint32
+	ring         map[uint32]goRedis.Cmdable
 }
 
 // NewConsistentHash creates a consistent hash ring from the provided nodes.
-func NewConsistentHash(nodes []Node, replicas int) (*ConsistentHash, error) {
+func NewConsistentHash(nodes []Node, fakeReplicas int) (*ConsistentHash, error) {
 	if len(nodes) == 0 {
 		return nil, errors.New("no redis shards provided")
 	}
-	if replicas <= 0 {
-		replicas = 128
+	if fakeReplicas <= 0 {
+		fakeReplicas = 128
 	}
 
-	ring := make(map[uint32]goRedis.Cmdable, len(nodes)*replicas)
-	keys := make([]uint32, 0, len(nodes)*replicas)
+	ring := make(map[uint32]goRedis.Cmdable, len(nodes)*fakeReplicas)
+	keys := make([]uint32, 0, len(nodes)*fakeReplicas)
 
 	for _, node := range nodes {
 		if node.ID == "" || node.Client == nil {
 			return nil, fmt.Errorf("invalid node: %+v", node)
 		}
-		for i := 0; i < replicas; i++ {
+		for i := 0; i < fakeReplicas; i++ {
 			hash := hashKey(fmt.Sprintf("%s#%d", node.ID, i))
 			ring[hash] = node.Client
 			keys = append(keys, hash)
@@ -48,9 +48,9 @@ func NewConsistentHash(nodes []Node, replicas int) (*ConsistentHash, error) {
 	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
 
 	return &ConsistentHash{
-		replicas: replicas,
-		keys:     keys,
-		ring:     ring,
+		fakeReplicas: fakeReplicas,
+		keys:         keys,
+		ring:         ring,
 	}, nil
 }
 
@@ -61,9 +61,11 @@ func (c *ConsistentHash) Pick(key string) (goRedis.Cmdable, error) {
 	}
 
 	hash := hashKey(key)
+
+	// Binary search on the hash ring
 	idx := sort.Search(len(c.keys), func(i int) bool { return c.keys[i] >= hash })
 	if idx == len(c.keys) {
-		idx = 0
+		idx = 0 // cyclic
 	}
 
 	client := c.ring[c.keys[idx]]
