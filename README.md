@@ -98,4 +98,16 @@ Status code distribution:
 
 
 
+## Redis Sharding Quickstart
+
+- Default backend is in-memory. Switch to Redis with `RATE_LIMIT_BACKEND=redis`.
+- Single node: set `REDIS_ADDR` (or keep default `127.0.0.1:6379`).
+- Sharded nodes: provide a comma-separated list via `REDIS_SHARDS`, e.g.
+  ```
+  RATE_LIMIT_BACKEND=redis \
+  REDIS_SHARDS=127.0.0.1:6379,127.0.0.1:6380 \
+  REDIS_HASH_REPLICAS=256 \
+  go run ./cmd/api
+  ```
+- Each request key is consistently hashed to a shard; add/remove nodes by editing `REDIS_SHARDS` and restarting all API pods so the ring stays in sync.
 
