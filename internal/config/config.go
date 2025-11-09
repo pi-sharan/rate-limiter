@@ -16,6 +16,11 @@ type RateLimiterConfig struct {
 }
 
 type RedisConfig struct {
+	HashReplicas int
+	Shards       []RedisShardConfig
+}
+
+type RedisShardConfig struct {
 	Addr     string
 	Username string
 	Password string
