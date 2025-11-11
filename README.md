@@ -101,13 +101,21 @@ Status code distribution:
 ## Redis Sharding Quickstart
 
 - Default backend is in-memory. Switch to Redis with `RATE_LIMIT_BACKEND=redis`.
-- Single node: set `REDIS_ADDR` (or keep default `127.0.0.1:6379`).
-- Sharded nodes: provide a comma-separated list via `REDIS_SHARDS`, e.g.
+- Describe shards via `REDIS_SHARDS` (comma-separated host:port pairs). If omitted, the service falls back to a single shard built from `REDIS_ADDR`, `REDIS_USERNAME`, `REDIS_PASSWORD`, `REDIS_DB`.
+- Optional: `REDIS_HASH_REPLICAS` tunes virtual nodes for the consistent-hash ring (defaults to 128).
+- Example with two shards:
   ```
   RATE_LIMIT_BACKEND=redis \
   REDIS_SHARDS=127.0.0.1:6379,127.0.0.1:6380 \
   REDIS_HASH_REPLICAS=256 \
   go run ./cmd/api
   ```
-- Each request key is consistently hashed to a shard; add/remove nodes by editing `REDIS_SHARDS` and restarting all API pods so the ring stays in sync.
+- Every request key is hashed to exactly one shard; keep shard lists identical across app replicas to ensure consistent routing when you scale out.
 
+## Architecture Overview
+- **Gin API service**: Runs in multiple pods/VMs, loads config at boot, and exposes `/resource` behind a middleware pipeline.
+- **Middleware path**: For each request we derive a key (`client-id:route`), invoke the limiter, and emit `429` or forward to the handler.
+- **Limiter abstraction**: In-memory and Redis implementations satisfy the same `Limiter` interface, so deployments can swap backends via config.
+- **Redis sharding**: When `RATE_LIMIT_BACKEND=redis`, the service builds a consistent-hash ring (CRC32 + virtual nodes). Every request key is hashed on the application side to pick a shard, ensuring that all replicas of the Go service route that client to the same Redis node without coordination services.
+- **Redis nodes**: Each shard stores token-bucket state using a Lua script for atomic refill/consume; TTL keeps idle keys lightweight. You can start with one node and scale horizontally by adding shard addresses.
+- **Scaling strategy**: Add more API replicas behind a load balancer. Because limiter state sits in Redis shards keyed via consistent hashing, any replica can process a request while still enforcing global per-client limits. Future additions like ZooKeeper/etcd would only be needed if shard membership must change dynamically without restart.
